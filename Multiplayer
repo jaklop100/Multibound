@@ -1,0 +1,197 @@
+import movscr_codes
+import asm65816
+import jsl_rts
+
+define controller2 = 0x7E0067 //Most recent input read for controller 2
+define next_obj_x = 0x2848 // Next frame object's X position (see $C09EFF)
+define next_obj_y = 0x284A // Next frame object's Y position (see $C09EFF)
+
+ness3:
+	m_task_long(MovTask_DestroyIfFar)
+	m_disable_collision
+	m_set_var0(1)
+	m_set_facing_anim(4,0)
+	m_warp_to_leader
+	m_asmcall(noP2Ctrl) 
+	m_set_var1(8) //timer until it switches walking animation frame
+	m_set_var3(0) //previous walking animation frame value
+	
+// Player movement
+	
+detect:
+	m_asmcall (ASM_input) //return a value from 0 to 9 depending on the input
+	m_pause(1)
+	m_multijmp(9) //jump to an action depending on the value
+		short walkRight
+		short walkLeft
+		short walkUp
+		short walkDown
+		short walkUpRight
+		short walkDownRight
+		short walkUpLeft
+		short walkDownLeft
+		short reset
+		
+	//no input, stop moving
+	m_set_speed(0)
+	m_start_walk(2)
+	m_set_anim(0)
+	m_jmp(detect)
+	
+	
+
+ASM_input:
+	LDA_al (controller2)
+	AND_i (8192) //Teleport to player 1 button. Uses AND so you can press other buttons at the same time
+	BNE_a (resetASM)
+	
+	LDA_al (controller2)
+	CMP_i(2304) // did you press both up and right?
+	BEQ_a (upRight) //branch to upRight if you did, which returns the corrosponding 
+					//value to the RESULT register
+	CMP_i(1280)	//repeat for each button combination
+	BEQ_a (downRight)
+	CMP_i(2560)
+	BEQ_a (upLeft)
+	CMP_i(1536)
+	BEQ_a (downLeft)
+	
+	LDA_al (controller2) //same as above but for single button presses
+	CMP_i (256) 	
+	BEQ_a (right)
+	CMP_i (512)
+	BEQ_a (left)
+	CMP_i (2048)
+	BEQ_a (up)
+	CMP_i (1024)
+	BEQ_a (down)
+	LDA_i(9)
+	RTL
+	
+	right:
+		LDA_i(0)
+		RTL
+	left:
+		LDA_i(1)
+		RTL
+	down:
+		LDA_i(2)
+		RTL
+	up:
+		LDA_i(3)
+		RTL
+		
+	upRight:
+		LDA_i(4)
+		RTL
+	downRight:
+		LDA_i(5)
+		RTL
+	upLeft:
+		LDA_i(6)
+		RTL
+	downLeft:
+		LDA_i(7)
+		RTL
+	resetASM:
+		LDA_i(8)
+		RTL
+
+
+		
+walkRight:
+	detectWall(INC, next_obj_x)
+	m_jne(detect)
+	walk(2)
+walkLeft:
+	detectWall(DEC, next_obj_x)
+	m_jne(detect)
+	walk(6)
+walkUp:
+	detectWall(DEC, next_obj_y)
+	m_jne(detect)
+	walk(4)
+walkDown:
+	detectWall(INC, next_obj_y)
+	m_jne(detect)
+	walk(0)
+walkUpRight:
+	walk(1)
+walkDownRight:
+	walk(3)
+walkUpLeft:
+	walk(7)
+walkDownLeft:
+	walk(5)
+reset:
+	m_warp_to_leader
+	m_sound(92)
+	m_jmp(detect)
+
+
+command walk(dir){
+	m_add_var1(-1) //increment counter
+	m_set_speed(350)
+	m_start_walk(dir)
+	
+	//set initial frame
+	m_get_var3
+	m_jeq (frame0)
+	m_set_facing_anim(dir, 1)
+	m_jmp (frame1)
+	frame0:
+	m_set_facing_anim(dir, 0)
+	frame1:
+	
+	//Walking Animation:
+	m_get_var1 // checking if it should switch animation frames
+	m_jne (noChange) //goes to no change if it's not 0
+	switchAnimFrame(dir)
+	noChange:
+	m_jmp(detect)
+	}
+
+
+command switchAnimFrame(dir){
+	m_get_var3 // checking what the previous animation frame was
+	m_jeq (prev0) //if previous frame was 0, jump to prev0
+	m_set_facing_anim(dir, 0) //if the previous frame was 1, switch animation frame to 0.
+	m_set_var1(8) //reset timer
+	m_set_var3(0) //set var3 to the new animation frame
+	m_jmp(prev1)
+	prev0:
+	m_set_facing_anim(dir, 1) //if the previous frame was 0, switch animation frame to 1.
+	m_set_var1(8) //reset timer
+	m_set_var3(1) //set var3 to the new animation frame
+	prev1:
+}
+
+//disables player 2 control over player 1 ness
+noP2Ctrl:
+	//The player 2 controller will control Ness if the RAM 
+	//address 7E436C is set to 0. This code sets it to 1, so 
+	//that only player 1 can control Ness.
+	LDA_i(1)
+	STA_al(0x7E436C)
+	RTL
+command detectWall(op, axis){
+	m_asmcall(ASM_wallHit)
+	m_jmp(detectWallEnd)
+	
+	
+	//I stole most of this from movescr_examples.ccs. Thanks CataLatas!
+	ASM_wallHit:
+	JSL   (0xC09F04) // Store pos+vel into $2848 and $284A
+	LDA_a (axis)
+	op //Changes position with INC or DEC
+	JSL   (0xC05F82) // Get surface flags at coordinate
+	AND_i (0x0080)   // SOLID?
+    BEQ_a (notWall)  // No, end
+		//yes, return 0 to result register
+		LDA_i(0)
+		RTL
+	notWall:
+		LDA_i(1)
+		RTL
+		
+	detectWallEnd:
