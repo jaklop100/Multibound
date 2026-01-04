@@ -4,7 +4,7 @@ An Earthbound ROM hack that aims to give the game multiplayer functionality.
 ### What this hack adds
 This hack is in it's very early stages. Currently, there is only a second player present in the starting room, and he has no wall collision, or ability to interact.
 
-### How to set up:
+### HOW TO SET UP:
 1. Legally acquire the ROM for Earthbound. (Make sure it's a .sfc file.)
 2. Download a SNES Emulator (I use this →[Mesen Emulator](https://www.mesen.ca/))
 3. Grab the patch file (multibound.bps) in this folder.
